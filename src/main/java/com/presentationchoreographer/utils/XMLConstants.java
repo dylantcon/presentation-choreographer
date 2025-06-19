@@ -26,6 +26,9 @@ public final class XMLConstants {
   public static final String XPATH_TIMING_ROOT_ELEMENT = "//p:timing";
   public static final String XPATH_MAIN_ANIMATION_SEQUENCE = ".//p:seq[@concurrent='1']";
   public static final String XPATH_TIMING_CHILD_NODES = "./p:childTnLst/p:par | ./p:childTnLst/p:seq";
+  public static final String XPATH_TIMING_CTN_ELEMENT = "./p:cTn";
+  public static final String XPATH_TIMING_DELAY_ATTRIBUTE = "./p:stCondLst/p:cond/@delay";
+  public static final String XPATH_TIMING_CTN_CHILDREN = "./p:childTnLst/p:par | ./p:childTnLst/p:seq";
 
   // XPath expressions for animation bindings
   public static final String XPATH_ALL_ANIMATION_EFFECTS = "//p:animEffect | //p:set";

@@ -171,15 +171,29 @@ public class SlideXMLParser {
    * Recursively parse timing nodes
    */
   private TimingNode parseTimingNode(Element element) throws XPathExpressionException {
-    String nodeId = element.getAttribute("id");
-    String nodeType = element.getAttribute("nodeType");
-    String duration = element.getAttribute("dur");
+    // The timing attributes are on the child <p:cTn> element, not the parent
+    Element cTnElement = (Element) xpath.evaluate(com.presentationchoreographer.utils.XMLConstants.XPATH_TIMING_CTN_ELEMENT, element, XPathConstants.NODE);
+    if (cTnElement == null) {
+      // If no cTn child, this element might BE the cTn element
+      cTnElement = element;
+    }
+
+    String nodeId = cTnElement.getAttribute("id");
+    String nodeType = cTnElement.getAttribute("nodeType");
+    String duration = cTnElement.getAttribute("dur");
 
     TimingNode node = new TimingNode(nodeId, nodeType, duration);
 
-    // Parse child timing nodes
-    NodeList children = (NodeList) xpath.evaluate(com.presentationchoreographer.utils.XMLConstants.XPATH_TIMING_CHILD_NODES, 
-        element, XPathConstants.NODESET);
+    // Extract delay information for click triggers
+    String delay = (String) xpath.evaluate(com.presentationchoreographer.utils.XMLConstants.XPATH_TIMING_DELAY_ATTRIBUTE, 
+        cTnElement, XPathConstants.STRING);
+    if (!delay.isEmpty()) {
+      node.setDelay(delay);
+    }
+
+    // Parse child timing nodes - handle both par and seq elements
+    NodeList children = (NodeList) xpath.evaluate(com.presentationchoreographer.utils.XMLConstants.XPATH_TIMING_CTN_CHILDREN, 
+        cTnElement, XPathConstants.NODESET);
 
     for (int i = 0; i < children.getLength(); i++) {
       Element childElement = (Element) children.item(i);

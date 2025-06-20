@@ -20,27 +20,47 @@ if not exist %JUNIT_JAR% (
     echo ✓ JUnit downloaded successfully
 )
 
-REM Compile tests
-echo Compiling tests...
+REM Compile all tests
+echo Compiling all tests...
 javac -cp "build;%JUNIT_JAR%" -d build\test src\test\java\com\presentationchoreographer\xml\writers\*.java
 if errorlevel 1 (
     echo Test compilation failed
     exit /b 1
 )
 
-echo ✓ Tests compiled successfully
+echo ✓ All tests compiled successfully
 
-REM Run tests
+REM Run all tests
 echo.
-echo Running RelationshipManager tests...
+echo Running all tests...
 echo ==========================================
-java -cp "build;build\test;%JUNIT_JAR%" org.junit.platform.console.ConsoleLauncher --classpath "build;build\test" --select-class com.presentationchoreographer.xml.writers.RelationshipManagerTest
 
+echo [1/2] Running RelationshipManager tests...
+java -cp "build;build\test;%JUNIT_JAR%" org.junit.platform.console.ConsoleLauncher --classpath "build;build\test" --select-class com.presentationchoreographer.xml.writers.RelationshipManagerTest
 if errorlevel 1 (
-    echo.
-    echo ✗ Some tests failed
+    echo ✗ RelationshipManager tests failed
     exit /b 1
-) else (
-    echo.
-    echo ✓ All tests passed!
 )
+echo ✓ RelationshipManager tests passed
+
+echo.
+echo [2/2] Running SPIDManager tests...
+java -cp "build;build\test;%JUNIT_JAR%" org.junit.platform.console.ConsoleLauncher --classpath "build;build\test" --select-class com.presentationchoreographer.xml.writers.SPIDManagerTest
+if errorlevel 1 (
+    echo ✗ SPIDManager tests failed
+    exit /b 1
+)
+echo ✓ SPIDManager tests passed
+
+echo.
+echo ==========================================
+echo 🎉 ALL TESTS PASSED!
+echo ==========================================
+echo.
+echo MODEL STATUS: Core XML manipulation complete and tested
+echo NEXT PHASE: Implement PPTXOrchestrator to complete Model layer
+echo.
+echo Test Summary:
+echo   • RelationshipManager: ✓ OOXML relationship handling
+echo   • SPIDManager: ✓ Shape ID management with animation preservation
+echo   • Ready for: High-level orchestration and LLM integration

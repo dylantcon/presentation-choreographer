@@ -24,6 +24,8 @@ public class SlideCreator {
   private final DocumentBuilder documentBuilder;
   private final XPath xpath;
   private final NamespaceContext namespaceContext;
+  private final RelationshipManager relationshipManager;
+  private final SPIDManager spidManager;
 
   public SlideCreator(File extractedPptxDir) throws XMLParsingException {
     this.extractedPptxDir = extractedPptxDir;
@@ -37,6 +39,12 @@ public class SlideCreator {
       XPathFactory xpathFactory = XPathFactory.newInstance();
       this.xpath = xpathFactory.newXPath();
       this.xpath.setNamespaceContext(namespaceContext);
+
+      // Initialize relationship manager for comprehensive relationship handling
+      this.relationshipManager = new RelationshipManager(extractedPptxDir);
+
+      // Initialize SPID manager for global shape ID management
+      this.spidManager = new SPIDManager(extractedPptxDir);
 
     } catch (ParserConfigurationException e) {
       throw new XMLParsingException("Failed to initialize slide creator", e);
@@ -175,48 +183,17 @@ public class SlideCreator {
   }
 
   /**
-   * Create relationships file for a new slide using centralized constants
+   * Create relationships file for a new slide using RelationshipManager
    */
   private void createSlideRelationships(int slideNumber) throws XMLParsingException {
     try {
-      // Create the relationships document
-      Document relsDoc = documentBuilder.newDocument();
+      // Delegate to RelationshipManager for comprehensive relationship handling
+      RelationshipManager.RelationshipCreationResult result = 
+        relationshipManager.createSlideRelationships(slideNumber, null, null);
 
-      // Create root relationships element with namespace
-      Element relationships = relsDoc.createElementNS(
-          com.presentationchoreographer.utils.XMLConstants.PACKAGE_RELATIONSHIPS_NS, 
-          "Relationships"
-          );
-      relsDoc.appendChild(relationships);
-
-      // Standard slide layout relationship (rId1)
-      Element layoutRel = relsDoc.createElementNS(
-          com.presentationchoreographer.utils.XMLConstants.PACKAGE_RELATIONSHIPS_NS, 
-          "Relationship"
-          );
-      layoutRel.setAttribute("Id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + "1");
-      layoutRel.setAttribute("Type", com.presentationchoreographer.utils.XMLConstants.RELATIONSHIP_TYPE_SLIDE_LAYOUT);
-      layoutRel.setAttribute("Target", com.presentationchoreographer.utils.XMLConstants.DEFAULT_SLIDE_LAYOUT_TARGET);
-      relationships.appendChild(layoutRel);
-
-      // Standard theme relationship (rId2)
-      Element themeRel = relsDoc.createElementNS(
-          com.presentationchoreographer.utils.XMLConstants.PACKAGE_RELATIONSHIPS_NS, 
-          "Relationship"
-          );
-      themeRel.setAttribute("Id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + "2");
-      themeRel.setAttribute("Type", com.presentationchoreographer.utils.XMLConstants.RELATIONSHIP_TYPE_THEME);
-      themeRel.setAttribute("Target", com.presentationchoreographer.utils.XMLConstants.DEFAULT_THEME_TARGET);
-      relationships.appendChild(themeRel);
-
-      // Write the relationships file
-      File relsDir = new File(extractedPptxDir, "ppt/slides/_rels");
-      relsDir.mkdirs(); // Ensure directory exists
-
-      File relsFile = new File(relsDir, String.format("slide%d.xml.rels", slideNumber));
-      writeDocument(relsDoc, relsFile);
-
-      System.out.println("  ✓ Created relationships file: " + relsFile.getName());
+      System.out.println("  ✓ Created relationships file: " + result.getRelationshipFile().getName());
+      System.out.println("    → Created " + result.getCreatedRelationshipIds().size() + " relationships: " + 
+          result.getCreatedRelationshipIds());
 
     } catch (Exception e) {
       throw new XMLParsingException("Failed to create slide relationships for slide " + slideNumber, e);
@@ -224,35 +201,17 @@ public class SlideCreator {
   }
 
   /**
-   * Copy relationships from source slide to new slide with ID remapping
+   * Copy relationships from source slide to new slide using RelationshipManager
    */
   private void copySlideRelationships(int sourceSlideNumber, int newSlideNumber) throws XMLParsingException {
     try {
-      // Load source relationships file
-      File sourceRelsFile = new File(extractedPptxDir, 
-          String.format("ppt/slides/_rels/slide%d.xml.rels", sourceSlideNumber));
+      // Use RelationshipManager for intelligent relationship copying with ID remapping
+      RelationshipManager.RelationshipCopyResult result = 
+        relationshipManager.copySlideRelationships(sourceSlideNumber, newSlideNumber, false);
 
-      if (!sourceRelsFile.exists()) {
-        // If source has no relationships, create basic ones
-        createSlideRelationships(newSlideNumber);
-        return;
-      }
-
-      // Parse source relationships
-      Document sourceRelsDoc = documentBuilder.parse(sourceRelsFile);
-      Document newRelsDoc = (Document) sourceRelsDoc.cloneNode(true);
-
-      // TODO: Implement relationship ID remapping for media references
-      // This prevents conflicts when copying slides with images/media
-
-      // Write copied relationships file
-      File relsDir = new File(extractedPptxDir, "ppt/slides/_rels");
-      relsDir.mkdirs();
-
-      File newRelsFile = new File(relsDir, String.format("slide%d.xml.rels", newSlideNumber));
-      writeDocument(newRelsDoc, newRelsFile);
-
-      System.out.println("  ✓ Copied relationships file: " + newRelsFile.getName());
+      System.out.println("  ✓ Copied relationships file: " + result.getRelationshipFile().getName());
+      System.out.println("    → ID mappings: " + result.getOldToNewIdMappings().size() + " relationships remapped");
+      System.out.println("    → New relationship IDs: " + result.getNewRelationshipIds());
 
     } catch (Exception e) {
       throw new XMLParsingException("Failed to copy slide relationships from slide " + 
@@ -334,11 +293,28 @@ public class SlideCreator {
   }
 
   /**
-   * Update content types registry to include new slide
+   * Update content types registry using RelationshipManager validation
    */
   private void updateContentTypes() throws XMLParsingException {
     try {
-      // Load [Content_Types].xml
+      // Use RelationshipManager to validate and ensure content types are consistent
+      RelationshipManager.ValidationResult validation = relationshipManager.validateAllRelationships();
+
+      if (validation.hasErrors()) {
+        System.out.println("  ⚠ Relationship validation found issues:");
+        for (String error : validation.getErrors()) {
+          System.out.println("    → " + error);
+        }
+      }
+
+      if (validation.hasWarnings()) {
+        System.out.println("  ⚠ Relationship validation warnings:");
+        for (String warning : validation.getWarnings()) {
+          System.out.println("    → " + warning);
+        }
+      }
+
+      // Load [Content_Types].xml for basic slide content type verification
       File contentTypesFile = new File(extractedPptxDir, "[Content_Types].xml");
       if (!contentTypesFile.exists()) {
         throw new XMLParsingException("[Content_Types].xml not found");
@@ -353,10 +329,8 @@ public class SlideCreator {
       NodeList overrides = (NodeList) xpath.evaluate(slideContentTypeQuery, 
           contentTypesDoc, XPathConstants.NODESET);
 
-      // Content types are typically registered generically, not per slide
-      // Most presentations already have the slide content type registered
       if (overrides.getLength() == 0) {
-        // Add slide content type override (this is unusual but handle the case)
+        // Add slide content type override if missing
         Element override = contentTypesDoc.createElement("Override");
         override.setAttribute("PartName", "/ppt/slides/slide1.xml");
         override.setAttribute("ContentType", com.presentationchoreographer.utils.XMLConstants.CONTENT_TYPE_SLIDE);
@@ -532,14 +506,45 @@ public class SlideCreator {
     // Clone the document
     Document copiedSlide = (Document) sourceSlide.cloneNode(true);
 
-    // TODO: Regenerate all SPIDs to avoid conflicts
-    // This is Priority 3 from TODO.md - SPID Regeneration System
-    // regenerateSpids(copiedSlide);
+    // Regenerate all SPIDs to avoid conflicts
+    SPIDManager.SPIDRegenerationResult spidResult = regenerateSpids(copiedSlide);
+    System.out.println("    → SPID regeneration: " + spidResult.getShapesProcessed() + 
+        " shapes, " + spidResult.getAnimationsUpdated() + " animations updated");
 
-    // TODO: Update title if provided
-    // updateSlideTitle(copiedSlide, newTitle);
+    // Update title if provided
+    if (newTitle != null && !newTitle.trim().isEmpty()) {
+      updateSlideTitle(copiedSlide, newTitle);
+    }
 
     return copiedSlide;
+  }
+
+  /**
+   * Regenerates all SPIDs in a slide document using SPIDManager.
+   * 
+   * @param slideDocument The slide document to regenerate SPIDs for
+   * @return SPIDRegenerationResult containing mapping and statistics
+   * @throws XMLParsingException If SPID regeneration fails
+   */
+  private SPIDManager.SPIDRegenerationResult regenerateSpids(Document slideDocument) throws XMLParsingException {
+    try {
+      return spidManager.regenerateSpids(slideDocument, 0); // 0 = copied slide (temporary)
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to regenerate SPIDs in copied slide", e);
+    }
+  }
+
+  /**
+   * Updates the title of a slide (placeholder implementation).
+   * 
+   * @param slide The slide document to update
+   * @param newTitle The new title text
+   * @throws XMLParsingException If title update fails
+   */
+  private void updateSlideTitle(Document slide, String newTitle) throws XMLParsingException {
+    // TODO: Implement title shape detection and text update
+    // This is a future enhancement for slide copying
+    System.out.println("    → Title update requested: \"" + newTitle + "\" (not yet implemented)");
   }
 
   /**
@@ -576,6 +581,80 @@ public class SlideCreator {
   }
 
   /**
+   * Add a media relationship (image, video, audio) to the specified slide
+   * 
+   * @param slideNumber The slide number (1-based) to add the media relationship to
+   * @param mediaType The type of media relationship (e.g., XMLConstants.RELATIONSHIP_TYPE_IMAGE)
+   * @param mediaTarget The target path relative to the slide (e.g., "../media/image1.png")
+   * @return The allocated relationship ID for the media
+   * @throws XMLParsingException If the media relationship cannot be added
+   */
+  public String addMediaRelationship(int slideNumber, String mediaType, String mediaTarget) throws XMLParsingException {
+    try {
+      String mediaRId = relationshipManager.addMediaRelationship(slideNumber, mediaType, mediaTarget);
+      System.out.println("  ✓ Added media relationship: " + mediaRId + " → " + mediaTarget);
+      return mediaRId;
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to add media relationship to slide " + slideNumber, e);
+    }
+  }
+
+  /**
+   * Get access to the underlying RelationshipManager for advanced relationship operations
+   * 
+   * @return The RelationshipManager instance
+   */
+  public RelationshipManager getRelationshipManager() {
+    return relationshipManager;
+  }
+
+  /**
+   * Get access to the underlying SPIDManager for advanced shape ID operations
+   * 
+   * @return The SPIDManager instance
+   */
+  public SPIDManager getSPIDManager() {
+    return spidManager;
+  }
+
+  /**
+   * Allocates a unique SPID for new shapes, guaranteed not to conflict with existing shapes.
+   * 
+   * @return A unique Shape ID
+   */
+  public int allocateUniqueSpid() {
+    return spidManager.allocateUniqueSpid();
+  }
+
+  /**
+   * Validates that all SPIDs and relationships in the presentation are consistent.
+   * 
+   * @return ValidationSummary containing any detected issues
+   * @throws XMLParsingException If validation cannot be performed
+   */
+  public ValidationSummary validatePresentation() throws XMLParsingException {
+    try {
+      // Validate both SPID uniqueness and relationship consistency
+      SPIDManager.ValidationResult spidValidation = spidManager.validateSpidUniqueness();
+      RelationshipManager.ValidationResult relationshipValidation = relationshipManager.validateAllRelationships();
+
+      List<String> allErrors = new ArrayList<>();
+      List<String> allWarnings = new ArrayList<>();
+
+      allErrors.addAll(spidValidation.getErrors());
+      allErrors.addAll(relationshipValidation.getErrors());
+
+      allWarnings.addAll(spidValidation.getWarnings());
+      allWarnings.addAll(relationshipValidation.getWarnings());
+
+      return new ValidationSummary(allErrors, allWarnings);
+
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to validate presentation", e);
+    }
+  }
+
+  /**
    * Write a document to a file with proper formatting
    */
   private void writeDocument(Document document, File outputFile) throws XMLParsingException {
@@ -597,6 +676,33 @@ public class SlideCreator {
 
     } catch (TransformerException e) {
       throw new XMLParsingException("Failed to write document to file", e);
+    }
+  }
+
+  // ========== INNER CLASSES ==========
+
+  /**
+   * Combined validation result for both SPIDs and relationships.
+   */
+  public static class ValidationSummary {
+    private final List<String> errors;
+    private final List<String> warnings;
+
+    public ValidationSummary(List<String> errors, List<String> warnings) {
+      this.errors = Collections.unmodifiableList(new ArrayList<>(errors));
+      this.warnings = Collections.unmodifiableList(new ArrayList<>(warnings));
+    }
+
+    public List<String> getErrors() { return errors; }
+    public List<String> getWarnings() { return warnings; }
+    public boolean hasErrors() { return !errors.isEmpty(); }
+    public boolean hasWarnings() { return !warnings.isEmpty(); }
+    public boolean isValid() { return errors.isEmpty(); }
+
+    @Override
+    public String toString() {
+      return String.format("ValidationSummary{errors=%d, warnings=%d}", 
+          errors.size(), warnings.size());
     }
   }
 }

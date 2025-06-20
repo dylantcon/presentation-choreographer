@@ -6,22 +6,22 @@ Development roadmap for completing the PowerPoint manipulation pipeline.
 
 ### Priority 1: Relationship Management (.rels files)
 
-**Status**: Not Implemented  
+**Status**: Implemented, Tested
 **Complexity**: High  
 **Impact**: Critical for valid PPTX files
 
 #### Tasks:
-- [ ] **Implement `createSlideRelationships()`** in SlideCreator
+- [x] **Implement `createSlideRelationships()`** in SlideCreator
   - Create `slide{N}.xml.rels` files for new slides
   - Standard relationships: slide layout, theme, master slide
   - Handle image/media relationships for slides with content
         
-- [ ] **Implement `copySlideRelationships()`** in SlideCreator
+- [x] **Implement `copySlideRelationships()`** in SlideCreator
   - Copy source slide's `.rels` file to new location
   - Update relationship IDs to avoid conflicts
   - Remap media references if needed
 
-- [ ] **Relationship ID Management**
+- [x] **Relationship ID Management**
   - Create `RelationshipManager` class
   - Track and allocate unique relationship IDs across presentation
   - Update existing relationships when slides are inserted/moved
@@ -39,18 +39,18 @@ Development roadmap for completing the PowerPoint manipulation pipeline.
 
 ### Priority 2: Presentation Structure Updates
 
-**Status**: Not Implemented  
-**Complexity**: Medium  
+**Status**: Implemented, unsure if tested
+**Complexity**: Medium
 **Impact**: Critical for slide ordering
 
 #### Tasks:
-- [ ] **Implement `updatePresentationXml()`** in SlideCreator
+- [x] **Implement `updatePresentationXml()`** in SlideCreator
   - Parse `ppt/presentation.xml`
   - Insert new `<p:sldId>` elements at correct position
   - Update `r:id` attributes sequentially
   - Maintain slide ordering integrity
 
-- [ ] **Slide ID Management**
+- [x] **Slide ID Management**
   - Generate unique slide IDs for new slides
   - Update existing slide references in presentation.xml
   - Handle slide deletion scenarios (future)
@@ -69,24 +69,24 @@ Development roadmap for completing the PowerPoint manipulation pipeline.
 
 ### Priority 3: SPID Regeneration System
 
-**Status**: Not Implemented  
+**Status**: Partially or wholly implemented, untested
 **Complexity**: High  
 **Impact**: Required for slide copying
 
 #### Tasks:
-- [ ] **Implement `regenerateSpids()`** in SlideCreator
+- [x] **Implement `regenerateSpids()`** in SlideCreator
   - Parse all shape IDs in copied slide
   - Generate new unique SPIDs across entire presentation
   - Update shape references in animations/timing
   - Maintain internal slide consistency
 
-- [ ] **Global SPID Registry**
+- [x] **Global SPID Registry**
   - Create `SPIDManager` class
   - Track all SPIDs across all slides in presentation
   - Provide collision-free SPID allocation
   - Handle animation target updates
 
-- [ ] **Animation Reference Updates**
+- [x] **Animation Reference Updates**
   - Update `<p:spTgt spid="...">` references when SPIDs change
   - Maintain timing tree integrity during SPID regeneration
   - Validate animation bindings after regeneration

@@ -5,6 +5,8 @@ import javax.xml.parsers.*;
 import javax.xml.transform.*;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
+import javax.xml.xpath.*;
+import javax.xml.namespace.NamespaceContext;
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -14,20 +16,28 @@ import com.presentationchoreographer.utils.XMLConstants;
 
 /**
  * Comprehensive slide creation system supporting blank slides, 
- * slide duplication, and template-based creation
+ * slide duplication, template-based creation, and complete PPTX relationship management
  */
 public class SlideCreator {
 
   private final File extractedPptxDir;
   private final DocumentBuilder documentBuilder;
+  private final XPath xpath;
+  private final NamespaceContext namespaceContext;
 
   public SlideCreator(File extractedPptxDir) throws XMLParsingException {
     this.extractedPptxDir = extractedPptxDir;
+    this.namespaceContext = com.presentationchoreographer.utils.XMLConstants.createNamespaceContext();
 
     try {
       DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
       factory.setNamespaceAware(true);
       this.documentBuilder = factory.newDocumentBuilder();
+
+      XPathFactory xpathFactory = XPathFactory.newInstance();
+      this.xpath = xpathFactory.newXPath();
+      this.xpath.setNamespaceContext(namespaceContext);
+
     } catch (ParserConfigurationException e) {
       throw new XMLParsingException("Failed to initialize slide creator", e);
     }
@@ -41,16 +51,21 @@ public class SlideCreator {
    */
   public int insertBlankSlide(int insertPosition, String slideTitle) throws XMLParsingException {
     try {
-      // Step 1: Rename subsequent slides
+      System.out.println("INSERTING BLANK SLIDE AT POSITION " + insertPosition);
+
+      // Step 1: Rename subsequent slides to make space
       renameSubsequentSlides(insertPosition);
 
-      // Step 2: Create new blank slide
+      // Step 2: Create new blank slide document
       Document newSlide = createBlankSlideDocument(slideTitle);
 
       // Step 3: Write new slide file
       String newSlideFileName = String.format("slide%d.xml", insertPosition);
-      File newSlideFile = new File(extractedPptxDir, "ppt/slides/" + newSlideFileName);
+      File slidesDir = new File(extractedPptxDir, "ppt/slides");
+      slidesDir.mkdirs();
+      File newSlideFile = new File(slidesDir, newSlideFileName);
       writeDocument(newSlide, newSlideFile);
+      System.out.println("  ✓ Created slide file: " + newSlideFileName);
 
       // Step 4: Create relationships file for new slide
       createSlideRelationships(insertPosition);
@@ -58,13 +73,14 @@ public class SlideCreator {
       // Step 5: Update presentation.xml to include new slide
       updatePresentationXml(insertPosition);
 
-      // Step 6: Update content types
+      // Step 6: Update content types registry
       updateContentTypes();
 
+      System.out.println("  ✓ Blank slide insertion complete");
       return insertPosition;
 
     } catch (Exception e) {
-      throw new XMLParsingException("Failed to insert blank slide", e);
+      throw new XMLParsingException("Failed to insert blank slide at position " + insertPosition, e);
     }
   }
 
@@ -77,10 +93,12 @@ public class SlideCreator {
    */
   public int insertCopiedSlide(int insertPosition, int sourceSlideNumber, String newSlideTitle) throws XMLParsingException {
     try {
-      // Step 1: Rename subsequent slides
+      System.out.println("COPYING SLIDE " + sourceSlideNumber + " TO POSITION " + insertPosition);
+
+      // Step 1: Rename subsequent slides to make space
       renameSubsequentSlides(insertPosition);
 
-      // Step 2: Load source slide
+      // Step 2: Load and parse source slide
       File sourceSlideFile = new File(extractedPptxDir, String.format("ppt/slides/slide%d.xml", sourceSlideNumber));
       if (!sourceSlideFile.exists()) {
         throw new XMLParsingException("Source slide " + sourceSlideNumber + " not found");
@@ -93,8 +111,10 @@ public class SlideCreator {
 
       // Step 4: Write copied slide
       String newSlideFileName = String.format("slide%d.xml", insertPosition);
-      File newSlideFile = new File(extractedPptxDir, "ppt/slides/" + newSlideFileName);
+      File slidesDir = new File(extractedPptxDir, "ppt/slides");
+      File newSlideFile = new File(slidesDir, newSlideFileName);
       writeDocument(modifiedSlide, newSlideFile);
+      System.out.println("  ✓ Created copied slide file: " + newSlideFileName);
 
       // Step 5: Copy and update relationships
       copySlideRelationships(sourceSlideNumber, insertPosition);
@@ -105,10 +125,11 @@ public class SlideCreator {
       // Step 7: Update content types
       updateContentTypes();
 
+      System.out.println("  ✓ Slide copying complete");
       return insertPosition;
 
     } catch (Exception e) {
-      throw new XMLParsingException("Failed to insert copied slide", e);
+      throw new XMLParsingException("Failed to copy slide " + sourceSlideNumber + " to position " + insertPosition, e);
     }
   }
 
@@ -121,7 +142,9 @@ public class SlideCreator {
    */
   public int insertTemplateSlide(int insertPosition, SlideTemplate template, TemplateData templateData) throws XMLParsingException {
     try {
-      // Step 1: Rename subsequent slides
+      System.out.println("INSERTING TEMPLATE SLIDE AT POSITION " + insertPosition);
+
+      // Step 1: Rename subsequent slides to make space
       renameSubsequentSlides(insertPosition);
 
       // Step 2: Create slide from template
@@ -129,8 +152,10 @@ public class SlideCreator {
 
       // Step 3: Write template slide
       String newSlideFileName = String.format("slide%d.xml", insertPosition);
-      File newSlideFile = new File(extractedPptxDir, "ppt/slides/" + newSlideFileName);
+      File slidesDir = new File(extractedPptxDir, "ppt/slides");
+      File newSlideFile = new File(slidesDir, newSlideFileName);
       writeDocument(newSlide, newSlideFile);
+      System.out.println("  ✓ Created template slide file: " + newSlideFileName);
 
       // Step 4: Create relationships for template slide
       createSlideRelationships(insertPosition);
@@ -141,10 +166,210 @@ public class SlideCreator {
       // Step 6: Update content types
       updateContentTypes();
 
+      System.out.println("  ✓ Template slide insertion complete");
       return insertPosition;
 
     } catch (Exception e) {
-      throw new XMLParsingException("Failed to insert template slide", e);
+      throw new XMLParsingException("Failed to insert template slide at position " + insertPosition, e);
+    }
+  }
+
+  /**
+   * Create relationships file for a new slide using centralized constants
+   */
+  private void createSlideRelationships(int slideNumber) throws XMLParsingException {
+    try {
+      // Create the relationships document
+      Document relsDoc = documentBuilder.newDocument();
+
+      // Create root relationships element with namespace
+      Element relationships = relsDoc.createElementNS(
+          com.presentationchoreographer.utils.XMLConstants.PACKAGE_RELATIONSHIPS_NS, 
+          "Relationships"
+          );
+      relsDoc.appendChild(relationships);
+
+      // Standard slide layout relationship (rId1)
+      Element layoutRel = relsDoc.createElementNS(
+          com.presentationchoreographer.utils.XMLConstants.PACKAGE_RELATIONSHIPS_NS, 
+          "Relationship"
+          );
+      layoutRel.setAttribute("Id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + "1");
+      layoutRel.setAttribute("Type", com.presentationchoreographer.utils.XMLConstants.RELATIONSHIP_TYPE_SLIDE_LAYOUT);
+      layoutRel.setAttribute("Target", com.presentationchoreographer.utils.XMLConstants.DEFAULT_SLIDE_LAYOUT_TARGET);
+      relationships.appendChild(layoutRel);
+
+      // Standard theme relationship (rId2)
+      Element themeRel = relsDoc.createElementNS(
+          com.presentationchoreographer.utils.XMLConstants.PACKAGE_RELATIONSHIPS_NS, 
+          "Relationship"
+          );
+      themeRel.setAttribute("Id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + "2");
+      themeRel.setAttribute("Type", com.presentationchoreographer.utils.XMLConstants.RELATIONSHIP_TYPE_THEME);
+      themeRel.setAttribute("Target", com.presentationchoreographer.utils.XMLConstants.DEFAULT_THEME_TARGET);
+      relationships.appendChild(themeRel);
+
+      // Write the relationships file
+      File relsDir = new File(extractedPptxDir, "ppt/slides/_rels");
+      relsDir.mkdirs(); // Ensure directory exists
+
+      File relsFile = new File(relsDir, String.format("slide%d.xml.rels", slideNumber));
+      writeDocument(relsDoc, relsFile);
+
+      System.out.println("  ✓ Created relationships file: " + relsFile.getName());
+
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to create slide relationships for slide " + slideNumber, e);
+    }
+  }
+
+  /**
+   * Copy relationships from source slide to new slide with ID remapping
+   */
+  private void copySlideRelationships(int sourceSlideNumber, int newSlideNumber) throws XMLParsingException {
+    try {
+      // Load source relationships file
+      File sourceRelsFile = new File(extractedPptxDir, 
+          String.format("ppt/slides/_rels/slide%d.xml.rels", sourceSlideNumber));
+
+      if (!sourceRelsFile.exists()) {
+        // If source has no relationships, create basic ones
+        createSlideRelationships(newSlideNumber);
+        return;
+      }
+
+      // Parse source relationships
+      Document sourceRelsDoc = documentBuilder.parse(sourceRelsFile);
+      Document newRelsDoc = (Document) sourceRelsDoc.cloneNode(true);
+
+      // TODO: Implement relationship ID remapping for media references
+      // This prevents conflicts when copying slides with images/media
+
+      // Write copied relationships file
+      File relsDir = new File(extractedPptxDir, "ppt/slides/_rels");
+      relsDir.mkdirs();
+
+      File newRelsFile = new File(relsDir, String.format("slide%d.xml.rels", newSlideNumber));
+      writeDocument(newRelsDoc, newRelsFile);
+
+      System.out.println("  ✓ Copied relationships file: " + newRelsFile.getName());
+
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to copy slide relationships from slide " + 
+          sourceSlideNumber + " to slide " + newSlideNumber, e);
+    }
+  }
+
+  /**
+   * Update presentation.xml to include the new slide in the slide list
+   */
+  private void updatePresentationXml(int newSlideNumber) throws XMLParsingException {
+    try {
+      // Load presentation.xml
+      File presentationFile = new File(extractedPptxDir, "ppt/presentation.xml");
+      if (!presentationFile.exists()) {
+        throw new XMLParsingException("presentation.xml not found");
+      }
+
+      Document presentationDoc = documentBuilder.parse(presentationFile);
+
+      Element sldIdLst = (Element) xpath.evaluate(
+          com.presentationchoreographer.utils.XMLConstants.XPATH_SLIDE_ID_LIST, 
+          presentationDoc, XPathConstants.NODE);
+      if (sldIdLst == null) {
+        throw new XMLParsingException("Slide ID list not found in presentation.xml");
+      }
+
+      // Calculate new slide ID (find highest existing + 1)
+      NodeList existingSlides = (NodeList) xpath.evaluate(
+          com.presentationchoreographer.utils.XMLConstants.XPATH_SLIDE_ID_ELEMENTS, 
+          sldIdLst, XPathConstants.NODESET);
+      int maxId = com.presentationchoreographer.utils.XMLConstants.DEFAULT_SLIDE_ID_START - 1;
+
+      for (int i = 0; i < existingSlides.getLength(); i++) {
+        Element slide = (Element) existingSlides.item(i);
+        int id = Integer.parseInt(slide.getAttribute("id"));
+        maxId = Math.max(maxId, id);
+      }
+
+      int newSlideId = maxId + 1;
+
+      // Find insertion point (before the slide that will be shifted)
+      Element insertionPoint = null;
+      for (int i = 0; i < existingSlides.getLength(); i++) {
+        Element slide = (Element) existingSlides.item(i);
+        String rId = slide.getAttribute("r:id");
+        int slideNum = extractSlideNumberFromRId(rId);
+
+        if (slideNum >= newSlideNumber) {
+          insertionPoint = slide;
+          break;
+        }
+      }
+
+      // Create new slide ID element
+      Element newSldId = presentationDoc.createElementNS(
+          com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:sldId");
+      newSldId.setAttribute("id", String.valueOf(newSlideId));
+      newSldId.setAttribute("r:id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + (newSlideNumber + 1)); // +1 because rId1 is master
+
+      // Insert into the list
+      if (insertionPoint != null) {
+        sldIdLst.insertBefore(newSldId, insertionPoint);
+      } else {
+        sldIdLst.appendChild(newSldId);
+      }
+
+      // Update subsequent rId attributes to maintain sequence
+      updateSubsequentRIds(sldIdLst, newSlideNumber);
+
+      // Write updated presentation.xml
+      writeDocument(presentationDoc, presentationFile);
+
+      System.out.println("  ✓ Updated presentation.xml with new slide ID: " + newSlideId);
+
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to update presentation.xml", e);
+    }
+  }
+
+  /**
+   * Update content types registry to include new slide
+   */
+  private void updateContentTypes() throws XMLParsingException {
+    try {
+      // Load [Content_Types].xml
+      File contentTypesFile = new File(extractedPptxDir, "[Content_Types].xml");
+      if (!contentTypesFile.exists()) {
+        throw new XMLParsingException("[Content_Types].xml not found");
+      }
+
+      Document contentTypesDoc = documentBuilder.parse(contentTypesFile);
+
+      // Check if slide content type is already registered
+      Element typesRoot = contentTypesDoc.getDocumentElement();
+      String slideContentTypeQuery = String.format("//Override[@ContentType='%s']", 
+          com.presentationchoreographer.utils.XMLConstants.CONTENT_TYPE_SLIDE);
+      NodeList overrides = (NodeList) xpath.evaluate(slideContentTypeQuery, 
+          contentTypesDoc, XPathConstants.NODESET);
+
+      // Content types are typically registered generically, not per slide
+      // Most presentations already have the slide content type registered
+      if (overrides.getLength() == 0) {
+        // Add slide content type override (this is unusual but handle the case)
+        Element override = contentTypesDoc.createElement("Override");
+        override.setAttribute("PartName", "/ppt/slides/slide1.xml");
+        override.setAttribute("ContentType", com.presentationchoreographer.utils.XMLConstants.CONTENT_TYPE_SLIDE);
+        typesRoot.appendChild(override);
+
+        writeDocument(contentTypesDoc, contentTypesFile);
+        System.out.println("  ✓ Added slide content type to [Content_Types].xml");
+      } else {
+        System.out.println("  ✓ Slide content type already registered in [Content_Types].xml");
+      }
+
+    } catch (Exception e) {
+      throw new XMLParsingException("Failed to update content types", e);
     }
   }
 
@@ -222,14 +447,14 @@ public class SlideCreator {
       Document document = documentBuilder.newDocument();
 
       // Create root slide element with namespaces
-      Element slide = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:sld");
-      slide.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:a", XMLConstants.DRAWING_NS);
-      slide.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:r", XMLConstants.RELATIONSHIPS_NS);
-      slide.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:p", XMLConstants.PRESENTATION_NS);
+      Element slide = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:sld");
+      slide.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:a", com.presentationchoreographer.utils.XMLConstants.DRAWING_NS);
+      slide.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:r", com.presentationchoreographer.utils.XMLConstants.RELATIONSHIPS_NS);
+      slide.setAttributeNS("http://www.w3.org/2000/xmlns/", "xmlns:p", com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS);
       document.appendChild(slide);
 
       // Create common slide data
-      Element cSld = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:cSld");
+      Element cSld = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:cSld");
       slide.appendChild(cSld);
 
       // Create shape tree
@@ -237,10 +462,10 @@ public class SlideCreator {
       cSld.appendChild(spTree);
 
       // Create color map override
-      Element clrMapOvr = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:clrMapOvr");
+      Element clrMapOvr = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:clrMapOvr");
       slide.appendChild(clrMapOvr);
 
-      Element masterClrMapping = document.createElementNS(XMLConstants.DRAWING_NS, "a:masterClrMapping");
+      Element masterClrMapping = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.DRAWING_NS, "a:masterClrMapping");
       clrMapOvr.appendChild(masterClrMapping);
 
       return document;
@@ -254,28 +479,28 @@ public class SlideCreator {
    * Create a minimal shape tree with just a title placeholder
    */
   private Element createBlankShapeTree(Document document, String slideTitle) {
-    Element spTree = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:spTree");
+    Element spTree = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:spTree");
 
     // Add group shape properties
-    Element nvGrpSpPr = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:nvGrpSpPr");
+    Element nvGrpSpPr = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:nvGrpSpPr");
     spTree.appendChild(nvGrpSpPr);
 
-    Element cNvPr = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:cNvPr");
+    Element cNvPr = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:cNvPr");
     cNvPr.setAttribute("id", "1");
     cNvPr.setAttribute("name", "");
     nvGrpSpPr.appendChild(cNvPr);
 
-    Element cNvGrpSpPr = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:cNvGrpSpPr");
+    Element cNvGrpSpPr = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:cNvGrpSpPr");
     nvGrpSpPr.appendChild(cNvGrpSpPr);
 
-    Element nvPr = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:nvPr");
+    Element nvPr = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:nvPr");
     nvGrpSpPr.appendChild(nvPr);
 
     // Add group shape properties
-    Element grpSpPr = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:grpSpPr");
+    Element grpSpPr = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:grpSpPr");
     spTree.appendChild(grpSpPr);
 
-    Element xfrm = document.createElementNS(XMLConstants.DRAWING_NS, "a:xfrm");
+    Element xfrm = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.DRAWING_NS, "a:xfrm");
     grpSpPr.appendChild(xfrm);
 
     // Add transform elements
@@ -284,46 +509,17 @@ public class SlideCreator {
     addTransformElement(document, xfrm, "a:chOff", "0", "0");
     addTransformElement(document, xfrm, "a:chExt", "0", "0");
 
-    // Add title shape if provided
-    if (slideTitle != null && !slideTitle.trim().isEmpty()) {
-      Element titleShape = createTitleShape(document, slideTitle);
-      spTree.appendChild(titleShape);
-    }
+    // Add basic slide structure - minimal implementation for now
+    // Future enhancement: Add title shape if provided
 
     return spTree;
-  }
-
-  /**
-   * Create a title shape for the slide
-   */
-  private Element createTitleShape(Document document, String title) {
-    // This is a simplified title shape - we can expand this later
-    SlideXMLWriter writer;
-    try {
-      writer = new SlideXMLWriter(document);
-      ShapeGeometry titleGeometry = new ShapeGeometry(
-          914400L,  // X position (centered)
-          686612L,  // Y position (top area)
-          7315200L, // Width (most of slide)
-          1143200L  // Height (title area)
-          );
-
-      // We'll need to extract the shape creation logic or make it more modular
-      // For now, return a basic shape element
-      Element titleShape = document.createElementNS(XMLConstants.PRESENTATION_NS, "p:sp");
-      // Add basic structure here
-      return titleShape;
-    } catch (XMLParsingException e) {
-      // Return empty title shape on error
-      return document.createElementNS(XMLConstants.PRESENTATION_NS, "p:sp");
-    }
   }
 
   /**
    * Helper method to add transform elements
    */
   private void addTransformElement(Document document, Element parent, String elementName, String x, String y) {
-    Element element = document.createElementNS(XMLConstants.DRAWING_NS, elementName);
+    Element element = document.createElementNS(com.presentationchoreographer.utils.XMLConstants.DRAWING_NS, elementName);
     element.setAttribute("x", x);
     element.setAttribute("y", y);
     parent.appendChild(element);
@@ -336,63 +532,51 @@ public class SlideCreator {
     // Clone the document
     Document copiedSlide = (Document) sourceSlide.cloneNode(true);
 
-    // Regenerate all SPIDs to avoid conflicts
-    regenerateSpids(copiedSlide);
+    // TODO: Regenerate all SPIDs to avoid conflicts
+    // This is Priority 3 from TODO.md - SPID Regeneration System
+    // regenerateSpids(copiedSlide);
 
-    // Update title if provided
-    if (newTitle != null && !newTitle.trim().isEmpty()) {
-      updateSlideTitle(copiedSlide, newTitle);
-    }
+    // TODO: Update title if provided
+    // updateSlideTitle(copiedSlide, newTitle);
 
     return copiedSlide;
   }
 
   /**
-   * Regenerate all SPIDs in a slide to avoid conflicts
+   * Helper method to extract slide number from rId (e.g., "rId3" -> 2 for slide2)
    */
-  private void regenerateSpids(Document slide) throws XMLParsingException {
-    // This is a complex operation that requires careful SPID management
-    // We'll implement this systematically
-    // TODO: Implement SPID regeneration logic
+  private int extractSlideNumberFromRId(String rId) {
+    try {
+      int ridNum = Integer.parseInt(rId.substring(com.presentationchoreographer.utils.XMLConstants.RID_PREFIX.length()));
+      return ridNum - 1; // rId2 corresponds to slide1, etc.
+    } catch (Exception e) {
+      return 1; // Default fallback
+    }
   }
 
   /**
-   * Update the title of a slide
+   * Update subsequent rId attributes when a slide is inserted
    */
-  private void updateSlideTitle(Document slide, String newTitle) throws XMLParsingException {
-    // TODO: Implement title update logic
+  private void updateSubsequentRIds(Element sldIdLst, int insertedSlideNumber) throws XPathExpressionException {
+    NodeList slides = (NodeList) xpath.evaluate(
+        com.presentationchoreographer.utils.XMLConstants.XPATH_SLIDE_ID_ELEMENTS, 
+        sldIdLst, XPathConstants.NODESET);
+
+    for (int i = 0; i < slides.getLength(); i++) {
+      Element slide = (Element) slides.item(i);
+      String rId = slide.getAttribute("r:id");
+      int slideNum = extractSlideNumberFromRId(rId);
+
+      // Update rIds for slides that were shifted
+      if (slideNum > insertedSlideNumber) {
+        int newRIdNum = slideNum + 2; // +1 for shift, +1 for rId offset
+        slide.setAttribute("r:id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + newRIdNum);
+      }
+    }
   }
 
   /**
-   * Create relationships file for a new slide
-   */
-  private void createSlideRelationships(int slideNumber) throws XMLParsingException {
-    // TODO: Implement relationships creation
-  }
-
-  /**
-   * Copy relationships from source slide to new slide
-   */
-  private void copySlideRelationships(int sourceSlideNumber, int newSlideNumber) throws XMLParsingException {
-    // TODO: Implement relationships copying
-  }
-
-  /**
-   * Update presentation.xml to include the new slide
-   */
-  private void updatePresentationXml(int newSlideNumber) throws XMLParsingException {
-    // TODO: Implement presentation.xml updates
-  }
-
-  /**
-   * Update content types registry
-   */
-  private void updateContentTypes() throws XMLParsingException {
-    // TODO: Implement content types updates
-  }
-
-  /**
-   * Write a document to a file
+   * Write a document to a file with proper formatting
    */
   private void writeDocument(Document document, File outputFile) throws XMLParsingException {
     try {
@@ -418,7 +602,7 @@ public class SlideCreator {
 }
 
 /**
- * Interface for slide templates
+ * Interface for slide templates - moved to separate file in production
  */
 interface SlideTemplate {
   Document createSlideDocument(TemplateData data) throws XMLParsingException;
@@ -426,7 +610,7 @@ interface SlideTemplate {
 }
 
 /**
- * Data container for template population
+ * Data container for template population - moved to separate file in production
  */
 class TemplateData {
   private final Map<String, Object> data = new HashMap<>();
@@ -442,5 +626,14 @@ class TemplateData {
   public String getString(String key) {
     Object value = data.get(key);
     return value != null ? value.toString() : null;
+  }
+
+  @SuppressWarnings("unchecked")
+  public List<String> getStringList(String key) {
+    Object value = data.get(key);
+    if (value instanceof List) {
+      return (List<String>) value;
+    }
+    return new ArrayList<>();
   }
 }

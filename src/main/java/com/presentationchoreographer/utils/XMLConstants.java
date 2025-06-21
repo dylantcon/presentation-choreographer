@@ -1,6 +1,7 @@
 package com.presentationchoreographer.utils;
 
 import javax.xml.namespace.NamespaceContext;
+import org.w3c.dom.Element;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -15,6 +16,19 @@ public final class XMLConstants {
   public static final String DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
   public static final String RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   public static final String PACKAGE_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+  // Namespace declaration attribute names (for setAttributeNS calls)
+  public static final String XMLNS_ATTRIBUTE = "http://www.w3.org/2000/xmlns/";
+  public static final String XMLNS_PREFIX_PRESENTATION = "xmlns:p";
+  public static final String XMLNS_PREFIX_DRAWING = "xmlns:a";
+  public static final String XMLNS_PREFIX_RELATIONSHIPS = "xmlns:r";
+  public static final String XMLNS_PREFIX_PACKAGE_RELATIONSHIPS = "xmlns:rel";
+
+  // Namespace prefixes for programmatic checks
+  public static final String PRESENTATION_PREFIX = "p";
+  public static final String DRAWING_PREFIX = "a";
+  public static final String RELATIONSHIPS_PREFIX = "r";
+  public static final String PACKAGE_RELATIONSHIPS_PREFIX = "rel";
 
   // XPath expressions for shape extraction
   public static final String XPATH_ALL_SHAPES_AND_PICTURES = "//p:spTree//p:sp | //p:spTree//p:pic";
@@ -83,6 +97,31 @@ public final class XMLConstants {
 
   private XMLConstants() {
     // Utility class - no instantiation
+  }
+
+  /**
+   * Ensures a namespace is declared on the given element.
+   * Single-source-of-truth for namespace declaration logic.
+   * 
+   * @param element The element to ensure namespace declaration on
+   * @param prefix The namespace prefix (e.g., "r", "p", "a")
+   * @param namespaceUri The namespace URI to declare
+   */
+  public static void ensureNamespaceDeclared(Element element, String prefix, String namespaceUri) {
+    if (element.lookupNamespaceURI(prefix) == null) {
+      element.setAttributeNS(XMLNS_ATTRIBUTE, "xmlns:" + prefix, namespaceUri);
+    }
+  }
+
+  /**
+   * Ensures all common PowerPoint namespaces are declared on an element.
+   * 
+   * @param element The element to ensure namespace declarations on
+   */
+  public static void ensureCommonNamespacesDeclared(Element element) {
+    ensureNamespaceDeclared(element, PRESENTATION_PREFIX, PRESENTATION_NS);
+    ensureNamespaceDeclared(element, DRAWING_PREFIX, DRAWING_NS);
+    ensureNamespaceDeclared(element, RELATIONSHIPS_PREFIX, RELATIONSHIPS_NS);
   }
 
   /**

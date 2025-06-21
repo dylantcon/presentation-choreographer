@@ -270,7 +270,11 @@ public class SlideCreator {
       Element newSldId = presentationDoc.createElementNS(
           com.presentationchoreographer.utils.XMLConstants.PRESENTATION_NS, "p:sldId");
       newSldId.setAttribute("id", String.valueOf(newSlideId));
-      newSldId.setAttribute("r:id", com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + (newSlideNumber + 1)); // +1 because rId1 is master
+      newSldId.setAttributeNS(
+          com.presentationchoreographer.utils.XMLConstants.RELATIONSHIPS_NS, 
+          "r:id", 
+          com.presentationchoreographer.utils.XMLConstants.RID_PREFIX + (newSlideNumber + 1)
+          );
 
       // Insert into the list
       if (insertionPoint != null) {
